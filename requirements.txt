@@ -6,3 +6,4 @@ plotly>=5.17.0
 sec-api>=1.0.0
 textblob>=0.17.1
 python-dotenv>=1.0.0
+matplotlib>=3.7.0

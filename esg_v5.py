@@ -360,14 +360,19 @@ def display_results(df):
             file_name=f"esg_analysis_{datetime.now():%Y%m%d}.csv",
             mime="text/csv"
         )
-        # Safe formatting
+        # Safe formatting with fallback
         style_cols = [c for c in [esg_col, sentiment_col] if c in df.columns]
         risk_cols = ['Risk Score'] if 'Risk Score' in df.columns else []
-        st.dataframe(
-            df.style.format(precision=2)
-            .background_gradient(cmap='RdYlGn', subset=style_cols)
-            .background_gradient(cmap='RdYlGn_r', subset=risk_cols)
-        )
+        try:
+            styled_df = df.style.format(precision=2)
+            if style_cols:
+                styled_df = styled_df.background_gradient(cmap='RdYlGn', subset=style_cols)
+            if risk_cols:
+                styled_df = styled_df.background_gradient(cmap='RdYlGn_r', subset=risk_cols)
+            st.dataframe(styled_df)
+        except ImportError:
+            # Fallback if matplotlib is not available
+            st.dataframe(df.style.format(precision=2))
 def create_esg_dashboard():
     """Main function to create the Streamlit dashboard UI and trigger analysis."""
     initialize_session_state()
