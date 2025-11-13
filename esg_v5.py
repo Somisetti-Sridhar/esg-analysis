@@ -9,7 +9,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import warnings
 from sec_api import ExtractorApi, QueryApi
-from textblob import TextBlob
+# from textblob import TextBlob
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import html
 import unicodedata
 import os
@@ -17,6 +18,9 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Initialize VADER sentiment analyzer
+vader_analyzer = SentimentIntensityAnalyzer()
 
 # --- Initial Setup ---
 warnings.filterwarnings('ignore')
@@ -62,16 +66,37 @@ def extract_risk_factors(extractor_api, url, form_type):
         return ""
 
 def analyze_sentiment(text):
-    """Analyzes sentiment using TextBlob, with robust error handling."""
-    if not text or len(text.strip()) < 20: return {"polarity": 0, "subjectivity": 0, "sentiment": "neutral"}
+    """Analyzes sentiment using VADER, with robust error handling."""
+    if not text or len(text.strip()) < 20: 
+        return {"polarity": 0, "subjectivity": 0, "sentiment": "neutral"}
     try:
-        blob = TextBlob(text)
+        # VADER sentiment analysis
+        scores = vader_analyzer.polarity_scores(text)
+        compound = scores['compound']
+        
+        # Calculate subjectivity proxy from pos/neg balance
+        subjectivity = (scores['pos'] + scores['neg']) / 2.0 if (scores['pos'] + scores['neg']) > 0 else 0
+        
         return {
-            "polarity": blob.sentiment.polarity, 
-            "subjectivity": blob.sentiment.subjectivity, 
-            "sentiment": "positive" if blob.sentiment.polarity > 0.1 else "negative" if blob.sentiment.polarity < -0.1 else "neutral"
+            "polarity": compound,  # VADER compound score ranges from -1 to 1
+            "subjectivity": subjectivity,
+            "sentiment": "positive" if compound > 0.05 else "negative" if compound < -0.05 else "neutral"
         }
-    except: return {"polarity": 0, "subjectivity": 0, "sentiment": "neutral"}
+    except: 
+        return {"polarity": 0, "subjectivity": 0, "sentiment": "neutral"}
+
+# Old TextBlob implementation (commented out)
+# def analyze_sentiment(text):
+#     """Analyzes sentiment using TextBlob, with robust error handling."""
+#     if not text or len(text.strip()) < 20: return {"polarity": 0, "subjectivity": 0, "sentiment": "neutral"}
+#     try:
+#         blob = TextBlob(text)
+#         return {
+#             "polarity": blob.sentiment.polarity, 
+#             "subjectivity": blob.sentiment.subjectivity, 
+#             "sentiment": "positive" if blob.sentiment.polarity > 0.1 else "negative" if blob.sentiment.polarity < -0.1 else "neutral"
+#         }
+#     except: return {"polarity": 0, "subjectivity": 0, "sentiment": "neutral"}
 
 def get_company_filings(api_key, ticker, max_filings):
     """Fetches recent 10-K and 10-Q filings for a given ticker."""
@@ -250,17 +275,54 @@ def display_results(df):
     
     # ---------------- Financials ----------------
     with tabs[1]:
-        st.subheader("Key Financial Ratios")
-        financial_cols = [col for col in ['Ticker', 'PE Ratio', 'Volatility', 'Beta'] if col in df.columns]
-        if len(financial_cols) >= 2:  # needs at least Ticker + 1 metric
-            df_financials = df[financial_cols].melt(id_vars='Ticker', var_name='Metric', value_name='Value')
-            fig_radar = px.line_polar(
-                df_financials, r='Value', theta='Metric', line_close=True, color='Ticker',
-                title="Financial Ratios Comparison"
-            )
-            st.plotly_chart(fig_radar, use_container_width=True)
-        else:
-            st.info("Financial ratio data is incomplete, so the radar chart cannot be displayed.")
+        st.subheader("Financial Metrics Comparison")
+        c1, c2 = st.columns(2)
+        
+        # Normalized radar chart for better comparison
+        with c1:
+            financial_cols = ['PE Ratio', 'Volatility', 'Beta']
+            available_cols = [col for col in financial_cols if col in df.columns]
+            
+            if len(available_cols) >= 2 and len(df) > 0:
+                # Normalize metrics to 0-100 scale for meaningful comparison
+                df_normalized = df[['Ticker'] + available_cols].copy()
+                
+                for col in available_cols:
+                    col_data = df_normalized[col].replace([np.inf, -np.inf], np.nan).dropna()
+                    if len(col_data) > 0:
+                        min_val, max_val = col_data.min(), col_data.max()
+                        if max_val > min_val:
+                            df_normalized[col] = ((df_normalized[col] - min_val) / (max_val - min_val)) * 100
+                        else:
+                            df_normalized[col] = 50
+                
+                df_radar = df_normalized.melt(id_vars='Ticker', var_name='Metric', value_name='Normalized Score')
+                
+                fig_radar = px.line_polar(
+                    df_radar, r='Normalized Score', theta='Metric', 
+                    line_close=True, color='Ticker',
+                    title="Financial Metrics (Normalized 0-100)",
+                    range_r=[0, 100]
+                )
+                fig_radar.update_traces(fill='toself', opacity=0.6)
+                st.plotly_chart(fig_radar, use_container_width=True)
+            else:
+                st.info("Insufficient financial data for radar chart.")
+        
+        # Bar chart for absolute values
+        with c2:
+            if 'PE Ratio' in df.columns and 'Market Cap ($B)' in df.columns:
+                fig_bar = px.bar(
+                    df.sort_values('Market Cap ($B)', ascending=False),
+                    x='Ticker', y='PE Ratio',
+                    color='Market Cap ($B)',
+                    title="P/E Ratio by Company",
+                    color_continuous_scale='Viridis'
+                )
+                fig_bar.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig_bar, use_container_width=True)
+            else:
+                st.info("P/E Ratio data not available.")
     
     # ---------------- Portfolio View ----------------
     with tabs[2]:
