@@ -12,11 +12,6 @@ from sec_api import ExtractorApi, QueryApi
 from textblob import TextBlob
 import html
 import unicodedata
-import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # --- Initial Setup ---
 warnings.filterwarnings('ignore')
@@ -212,7 +207,7 @@ def update_metrics_dynamically(df):
 
 def display_results(df):
     """Renders the main results dashboard with multiple tabs and visualizations."""
-    st.success(f"Successfully analyzed {len(df)} companies at {st.session_state.last_analysis_time.strftime('%H:%M:%S')}")
+    st.success(f"✅ Successfully analyzed {len(df)} companies at {st.session_state.last_analysis_time.strftime('%H:%M:%S')}")
     update_metrics_dynamically(df)
     
     # ---- Safe column selection
@@ -221,9 +216,9 @@ def display_results(df):
     sentiment_col = 'Combined Sentiment Score' if 'Combined Sentiment Score' in df.columns else 'Sentiment Score'
     
     tabs = st.tabs(
-        ["ESG Overview", "Financials", "Portfolio View", "Rankings"] +
-        (["SEC Filings"] if include_sec else []) +
-        ["Detailed Data"]
+        ["📊 ESG Overview", "💰 Financials", "📈 Portfolio View", "🏆 Rankings"] +
+        (["📄 SEC Filings"] if include_sec else []) +
+        ["📋 Detailed Data"]
     )
     
     # ---------------- ESG Overview ----------------
@@ -294,21 +289,22 @@ def display_results(df):
         c1, c2 = st.columns(2)
         with c1:
             if esg_col in df.columns and sentiment_col in df.columns:
-                st.markdown("#### Top ESG Performers")
-                for rank, (idx, r) in enumerate(df.nlargest(5, esg_col).iterrows(), 1):
+                st.markdown("#### 🥇 Top ESG Performers")
+                for i, r in df.nlargest(5, esg_col).iterrows():
+                    rank_symbol = '🥇🥈🥉'[i] if i < 3 else f'{i+1}.'
                     st.markdown(
-                        f"<div class='alert-success'><strong>#{rank} {r['Ticker']}</strong>"
-                        f"<br>ESG: {r[esg_col]:.1f} | Sentiment: {r[sentiment_col]:.3f}</div>",
+                        f"<div class='alert-success'><strong>{rank_symbol} {r['Ticker']}</strong>"
+                        f"<br>🌱 ESG: {r[esg_col]:.1f} | 😊 Sent: {r[sentiment_col]:.3f}</div>",
                         unsafe_allow_html=True
                     )
         with c2:
             if 'Risk Score' in df.columns:
-                st.markdown("#### High Risk Alerts")
-                for rank, (idx, r) in enumerate(df.nlargest(5, 'Risk Score').iterrows(), 1):
-                    risk_level = 'HIGH' if r['Risk Score'] > 70 else ('MEDIUM' if r['Risk Score'] > 35 else 'LOW')
+                st.markdown("#### ⚠️ High Risk Alerts")
+                for i, r in df.nlargest(5, 'Risk Score').iterrows():
+                    risk_level = '🔴 HIGH' if r['Risk Score'] > 70 else ('🟡 MEDIUM' if r['Risk Score'] > 35 else '🟢 LOW')
                     st.markdown(
-                        f"<div class='alert-danger'><strong>#{rank} {r['Ticker']}</strong>"
-                        f"<br>Risk: {r['Risk Score']:.1f} ({risk_level})</div>",
+                        f"<div class='alert-danger'><strong>#{i+1} {r['Ticker']}</strong>"
+                        f"<br>⚠️ Risk: {r['Risk Score']:.1f} ({risk_level})</div>",
                         unsafe_allow_html=True
                     )
     
@@ -351,46 +347,41 @@ def display_results(df):
     
     # ---------------- Detailed Data ----------------
     with tabs[tab_offset]:
-        st.subheader("Complete Analysis Dataset")
+        st.subheader("📋 Complete Analysis Dataset")
         df_csv = df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            "Download CSV",
+            "📥 Download CSV",
             data=df_csv,
             file_name=f"esg_analysis_{datetime.now():%Y%m%d}.csv",
             mime="text/csv"
         )
-        # Safe formatting with fallback
+        # Safe formatting
         style_cols = [c for c in [esg_col, sentiment_col] if c in df.columns]
         risk_cols = ['Risk Score'] if 'Risk Score' in df.columns else []
-        try:
-            styled_df = df.style.format(precision=2)
-            if style_cols:
-                styled_df = styled_df.background_gradient(cmap='RdYlGn', subset=style_cols)
-            if risk_cols:
-                styled_df = styled_df.background_gradient(cmap='RdYlGn_r', subset=risk_cols)
-            st.dataframe(styled_df)
-        except ImportError:
-            # Fallback if matplotlib is not available
-            st.dataframe(df.style.format(precision=2))
+        st.dataframe(
+            df.style.format(precision=2)
+            .background_gradient(cmap='RdYlGn', subset=style_cols)
+            .background_gradient(cmap='RdYlGn_r', subset=risk_cols)
+        )
 def create_esg_dashboard():
     """Main function to create the Streamlit dashboard UI and trigger analysis."""
     initialize_session_state()
-    st.markdown('<div class="main-header"><h1>ESG & Financial Screener Pro</h1></div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header"><h1>🌱 ESG & Financial Screener Pro</h1></div>', unsafe_allow_html=True)
     if st.session_state.update_counter > 0: st.markdown(f'<div class="update-indicator">Refreshed: {st.session_state.update_counter}</div>', unsafe_allow_html=True)
 
     with st.sidebar:
-        st.header("Configuration")
+        st.header("📊 Configuration")
         tickers_input = st.text_area("Tickers (comma-separated):", "AAPL,MSFT,GOOGL,TSLA,JPM,NVDA,V,UNH")
         include_sec = st.checkbox("Include SEC Filings Analysis", True)
-        api_key_input = st.text_input("SEC API Key", type="password", value=os.getenv("SEC_API_KEY", ""))
+        api_key_input = st.text_input("SEC API Key", type="password", value="2405f610b50a95de61a7116fbe958f950512fe9c1e9db90b450ef0836d940c40")
         max_filings = st.slider("Max Filings per Ticker", 1, 10, 5)
         
-        st.subheader("Display Filters")
+        st.subheader("🎯 Display Filters")
         min_esg = st.slider("Minimum ESG Score", 0, 100, 0)
         min_sentiment = st.slider("Minimum Sentiment", -1.0, 1.0, -1.0, 0.1)
         min_mkt_cap = st.number_input("Minimum Market Cap ($B)", 0.0, value=0.0)
 
-        if st.button("Run Analysis", type="primary", use_container_width=True):
+        if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
             tickers = [t.strip().upper() for t in tickers_input.split(',') if t.strip()]
             if not tickers: st.error("Please enter at least one ticker."); return
             
@@ -424,7 +415,7 @@ def create_esg_dashboard():
                 df_filtered = df[(df[esg_col] >= min_esg) & (df[sent_col] >= min_sentiment) & (df['Market Cap ($B)'] >= min_mkt_cap)]
 
                 st.session_state.analysis_results = df_filtered if not df_filtered.empty else df
-                if df_filtered.empty: st.warning("No companies passed filters. Showing all results.")
+                if df_filtered.empty: st.warning("⚠️ No companies passed filters. Showing all results.")
                 
                 st.session_state.last_analysis_time = datetime.now()
                 st.session_state.update_counter += 1
