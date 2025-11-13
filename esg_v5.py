@@ -12,6 +12,11 @@ from sec_api import ExtractorApi, QueryApi
 from textblob import TextBlob
 import html
 import unicodedata
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # --- Initial Setup ---
 warnings.filterwarnings('ignore')
@@ -373,7 +378,7 @@ def create_esg_dashboard():
         st.header("📊 Configuration")
         tickers_input = st.text_area("Tickers (comma-separated):", "AAPL,MSFT,GOOGL,TSLA,JPM,NVDA,V,UNH")
         include_sec = st.checkbox("Include SEC Filings Analysis", True)
-        api_key_input = st.text_input("SEC API Key", type="password", value="2405f610b50a95de61a7116fbe958f950512fe9c1e9db90b450ef0836d940c40")
+        api_key_input = st.text_input("SEC API Key", type="password", value=os.getenv("SEC_API_KEY", ""))
         max_filings = st.slider("Max Filings per Ticker", 1, 10, 5)
         
         st.subheader("🎯 Display Filters")
