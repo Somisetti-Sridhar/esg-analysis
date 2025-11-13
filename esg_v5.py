@@ -245,17 +245,76 @@ def display_results(df):
     
     # ---------------- Financials ----------------
     with tabs[1]:
-        st.subheader("Key Financial Ratios")
-        financial_cols = [col for col in ['Ticker', 'PE Ratio', 'Volatility', 'Beta'] if col in df.columns]
-        if len(financial_cols) >= 2:  # needs at least Ticker + 1 metric
-            df_financials = df[financial_cols].melt(id_vars='Ticker', var_name='Metric', value_name='Value')
-            fig_radar = px.line_polar(
-                df_financials, r='Value', theta='Metric', line_close=True, color='Ticker',
-                title="Financial Ratios Comparison"
-            )
-            st.plotly_chart(fig_radar, use_container_width=True)
-        else:
-            st.info("Financial ratio data is incomplete, so the radar chart cannot be displayed.")
+        st.subheader("Key Financial Metrics")
+        c1, c2 = st.columns(2)
+        
+        # PE Ratio vs Market Cap
+        with c1:
+            if 'PE Ratio' in df.columns and 'Market Cap ($B)' in df.columns:
+                df_pe = df.dropna(subset=['PE Ratio'])
+                if not df_pe.empty:
+                    fig_pe = px.scatter(
+                        df_pe, x='Market Cap ($B)', y='PE Ratio',
+                        color='Sector', size='Market Cap ($B)',
+                        hover_data=['Ticker', 'Company'],
+                        title="PE Ratio vs Market Cap",
+                        log_x=True
+                    )
+                    fig_pe.add_hline(y=20, line_dash="dash", line_color="gray", annotation_text="Fair Value (PE=20)")
+                    st.plotly_chart(fig_pe, use_container_width=True)
+        
+        # Beta vs Volatility
+        with c2:
+            if 'Beta' in df.columns and 'Volatility' in df.columns:
+                fig_beta = px.scatter(
+                    df, x='Beta', y='Volatility',
+                    color='Sector', size='Market Cap ($B)',
+                    hover_data=['Ticker', 'Company'],
+                    title="Beta vs Volatility"
+                )
+                fig_beta.add_vline(x=1.0, line_dash="dash", line_color="gray", annotation_text="Market Beta")
+                st.plotly_chart(fig_beta, use_container_width=True)
+        
+        # Financial Metrics Bar Chart and Radar Chart
+        st.subheader("Comparative Financial Metrics")
+        c3, c4 = st.columns(2)
+        
+        financial_metrics = ['PE Ratio', 'Beta', 'Volatility']
+        available_metrics = [m for m in financial_metrics if m in df.columns]
+        
+        if available_metrics:
+            df_normalized = df[['Ticker'] + available_metrics].copy()
+            for metric in available_metrics:
+                df_normalized[metric] = df_normalized[metric].fillna(df_normalized[metric].median())
+            
+            with c3:
+                df_melted = df_normalized.melt(id_vars='Ticker', var_name='Metric', value_name='Value')
+                fig_bar = px.bar(
+                    df_melted, x='Ticker', y='Value', color='Metric',
+                    barmode='group',
+                    title="Financial Metrics Comparison",
+                    labels={'Value': 'Metric Value'}
+                )
+                st.plotly_chart(fig_bar, use_container_width=True)
+            
+            with c4:
+                # Normalize metrics to 0-100 scale for radar chart
+                df_radar = df[['Ticker'] + available_metrics].copy()
+                for metric in available_metrics:
+                    col_data = df_radar[metric].fillna(df_radar[metric].median())
+                    min_val, max_val = col_data.min(), col_data.max()
+                    if max_val > min_val:
+                        df_radar[metric] = ((col_data - min_val) / (max_val - min_val)) * 100
+                    else:
+                        df_radar[metric] = 50
+                
+                df_radar_melted = df_radar.melt(id_vars='Ticker', var_name='Metric', value_name='Normalized Value')
+                fig_radar = px.line_polar(
+                    df_radar_melted, r='Normalized Value', theta='Metric',
+                    color='Ticker', line_close=True,
+                    title="Normalized Financial Profile (0-100 Scale)"
+                )
+                st.plotly_chart(fig_radar, use_container_width=True)
     
     # ---------------- Portfolio View ----------------
     with tabs[2]:
